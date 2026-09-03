@@ -6,18 +6,29 @@ echo "PS1='\[\e[01;36m\]\u\[\e[01;37m\]@\[\e[01;33m\]\H\[\e[01;37m\]:\[\e[01;32m
 sed -i '1s/^/force_color_prompt=yes\n/' ~/.bashrc
 source ~/.bashrc
 
-apt-get autoremove -y  #removes the packages that are no longer needed
+apt-get autoremove -y
 apt-get update
 systemctl daemon-reload
 
-curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+# Instalar prerequisitos para agregar claves GPG de forma segura
+apt-get install -y apt-transport-https ca-certificates curl gpg
+
+# Crear directorio keyrings si no existe
+mkdir -p /etc/apt/keyrings
+
+# Agregar clave GPG oficial de Kubernetes (método moderno)
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+# Agregar repositorio de Kubernetes moderno
 cat <<EOF > /etc/apt/sources.list.d/kubernetes.list
-deb http://apt.kubernetes.io/ kubernetes-xenial main
+deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /
 EOF
 
-KUBE_VERSION=1.20.0
+KUBE_VERSION=1.30.9-1.1
 apt-get update
-apt-get install -y docker.io vim build-essential jq python3-pip kubelet=${KUBE_VERSION}-00 kubectl=${KUBE_VERSION}-00 kubernetes-cni=0.8.7-00 kubeadm=${KUBE_VERSION}-00
+apt-get install -y docker.io vim build-essential jq python3-pip kubelet=${KUBE_VERSION} kubectl=${KUBE_VERSION} kubernetes-cni kubeadm=${KUBE_VERSION}
+
+# pip normal en Ubuntu 18.04
 pip3 install jc
 
 ### UUID of VM 
@@ -55,8 +66,9 @@ kubectl apply -f https://github.com/weaveworks/weave/releases/download/v2.8.1/we
 sleep 60
 
 echo "untaint controlplane node"
-kubectl taint node $(kubectl get nodes -o=jsonpath='{.items[].metadata.name}') node.kubernetes.io/not-ready:NoSchedule-
-kubectl taint node $(kubectl get nodes -o=jsonpath='{.items[].metadata.name}') node-role.kubernetes.io/master:NoSchedule-
+# Taints en Kubernetes moderno (v1.25+)
+kubectl taint node $(kubectl get nodes -o=jsonpath='{.items[].metadata.name}') node-role.kubernetes.io/control-plane:NoSchedule- 2>/dev/null || true
+kubectl taint node $(kubectl get nodes -o=jsonpath='{.items[].metadata.name}') node.kubernetes.io/not-ready:NoSchedule- 2>/dev/null || true
 kubectl get node -o wide
 
 
@@ -70,6 +82,7 @@ mvn -v
 
 
 echo ".........----------------#################._.-.-JENKINS-.-._.#################----------------........."
+# Método compatible con Ubuntu 18.04 (usar apt-key)
 wget -q -O - https://pkg.jenkins.io/debian-stable/jenkins.io.key | sudo apt-key add -
 sudo sh -c 'echo deb http://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
 sudo apt update
